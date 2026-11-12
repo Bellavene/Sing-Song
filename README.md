@@ -7,9 +7,10 @@ A TUI panel for [Sing-Box](https://github.com/SagerNet/sing-box)’s API calls u
 #### Features
 
   1. Visually pleasant minimal design.
-  2. Highlights problematic connections.
-  3. GeoLite2 database integration to instantly fetch and cache additional information about all outbound and inbound IP’s
-  4. A simple catching system for destination IP’s based on GeoLite2 queries by country code and domain missmatch of final IP’s ASN.
+  2. Mutliple sing-box servers can be queried at the same time.
+  3. Highlights problematic connections.
+  4. GeoLite2 database integration to instantly fetch and catch additional information about all outbound and inbound IP’s
+  5. A simple catching system for destination IP’s based on GeoLite2 queries by country code and domain missmatch of final IP’s ASN.
 
 Seperate versions for sing-box running on a server (sing) or local client machine (singlo)
 
