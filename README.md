@@ -8,8 +8,8 @@ A TUI panel for [Sing-Box](https://github.com/SagerNet/sing-box)’s API calls u
 
   1. Visually pleasant minimal design.
   2. Highlights problematic connections.
-  3. ipinfo.io API integration to instantly fetch and cache additional information about all outbound and inbound IP’s
-  4. A simple catching system for destination IP’s based on cached ipinfo.io queries by country code.
+  3. GeoLite2 database integration to instantly fetch and cache additional information about all outbound and inbound IP’s
+  4. A simple catching system for destination IP’s based on GeoLite2 queries by country code and domain missmatch of final IP’s ASN.
 
 Seperate versions for sing-box running on a server (sing) or local client machine (singlo)
 
@@ -22,8 +22,8 @@ for servers sing-box API
 - <b>Enter</b>  Shows a popup with queried information about selected connection
 - <b>Space</b>  Pauses list update
 - <b>Escape</b>  Toggles Catch list
-- <b>Tab</b>  Adds current selection to Catch list
-- <b>R</b>  Toggles catching of destination IP’s by country code. (Default RU)
+- <b>Tab</b>  Cycles list by destination servers API and all servers together
+- <b>X</b>  Adds current selection to Catch list
 - <b>K</b>  Kills selected connection
 - <b>C</b>  Copies destination IP
 - <b>Shift+C</b>  Copies source IP
@@ -45,5 +45,5 @@ For clients sing-box API
 - <b>S</b>  Changes sort direction and sort order by most uploaded or downloaded.
 
 #### Information
-All settings, IP address and API keys can be set directly in the Python code.
-Uses Hack Nerd Font for icons.
+On the first run the databases are downloaded.
+Configurations are stored in ~/.config/sing-song/config.json
