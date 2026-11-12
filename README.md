@@ -1,4 +1,4 @@
-# sing
+# Sing-Song
 
 A TUI panel for [Sing-Box](https://github.com/SagerNet/sing-box)’s API calls using websocket connection for speed.
 
@@ -30,7 +30,7 @@ for servers sing-box API
 - <b>D</b>  Copies domain name
 - <b>S</b>  Changes sort order
 
-#### Singlo
+#### Song
 
 For clients sing-box API
 
