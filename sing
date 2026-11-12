@@ -10,7 +10,6 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from cachetools import LRUCache
 
 # Reduce curses escape key delay from default (1000ms) to 25ms for instant response
 os.environ["ESCDELAY"] = "25"
@@ -37,7 +36,7 @@ CONFIG_PATH = os.path.expanduser("~/.config/sing-song/config.json")
 DEFAULT_CONFIG = {
     "servers": [
         {
-            "api": "http://127.0.0.1:9090",
+            "api": "http://127.0.0.1:444",
             "secret": "",
             "tab_name": "Lo"
         }
@@ -109,9 +108,10 @@ SCROLL_OFFSET = 0
 AUTO_FOLLOW_MODE = "top"  # "top", "bottom", or "none"
 VIEW_MODE = "all"  # "all" (servers merged) or a server index (TAB cycles)
 
-# GEO ("Catch") View State & Cache
+# GEO ("Catch") View State (plain dict without unbounded cache)
 IN_GEO_VIEW = False
-GEO_CONNECTIONS_CACHE = {}  # (server_idx, cid) -> connection dict
+GEO_CONNECTIONS_CACHE = {}
+
 GEO_SELECTED_ROW = 0
 GEO_SCROLL_OFFSET = 0
 GEO_SELECTED_CONN_ID = None
@@ -129,11 +129,9 @@ for _i, _s in enumerate(SERVERS):
     _s["conns"] = []
     _s["proxies"] = []
 
-# In-Memory Geo Cache
-GEO_CACHE = LRUCache(maxsize=2048)
-
 thread_pool = ThreadPoolExecutor(max_workers=4)
 
+# Connection history (plain dict with short TTL purge)
 CONNECTION_HISTORY = {}
 CONNECTIONS_LOCK = threading.Lock()
 LATEST_CONNECTIONS = []
@@ -206,7 +204,6 @@ def init_geo_readers():
     if os.path.exists(cpath):
         try:
             GEO_READER = maxminddb.open_database(cpath)
-            GEO_CACHE.clear()
         except Exception as e:
             errors.append(f"country db: {e}")
     else:
@@ -271,12 +268,7 @@ def lookup_geo(target):
         except Exception:
             query_host = target
 
-    cache_key = query_ip if is_valid_ip(query_ip) else query_host
-    cached = GEO_CACHE.get(cache_key)
-    if cached and not cached.get("error"):
-        return cached
-
-    res = {"ip": query_ip if is_valid_ip(query_ip) else cache_key, "host": query_host}
+    res = {"ip": query_ip if is_valid_ip(query_ip) else target, "host": query_host}
     if GEO_LOAD_ERROR and not GEO_READER:
         res["error"] = f"Geo DB: {GEO_LOAD_ERROR}"
         return res
@@ -301,24 +293,7 @@ def lookup_geo(target):
     except Exception as e:
         res["error"] = str(e)
 
-    if not res.get("error"):
-        GEO_CACHE[cache_key] = res
     return res
-
-
-def trigger_async_geo_lookup(target):
-    if not CHECK_GEO_IPS:
-        return
-    if not target or target in ["-", "127.0.0.1", "::1"]:
-        return
-    cache_key = target
-    if not is_valid_ip(target):
-        try:
-            cache_key = socket.gethostbyname(target)
-        except Exception:
-            pass
-    if cache_key not in GEO_CACHE:
-        thread_pool.submit(lookup_geo, cache_key)
 
 
 def sni_mismatch_check(conn, server_idx):
@@ -355,16 +330,13 @@ def open_geo_modal(sip, dip, host=None):
     global MODAL_DATA
 
     target = dip if (dip and dip != "-") else host
-    s_initial = GEO_CACHE.get(sip) if sip in GEO_CACHE else {"ip": sip or "-", "loading": True}
-    d_initial = GEO_CACHE.get(target) if target in GEO_CACHE else {"ip": target or "-", "loading": True}
-
     with MODAL_LOCK:
         MODAL_DATA = {
             "sip": sip or "-",
             "dip": target or "-",
             "host": host or "-",
-            "s_data": s_initial,
-            "d_data": d_initial,
+            "s_data": {"ip": sip or "-", "loading": True},
+            "d_data": {"ip": target or "-", "loading": True},
         }
 
     def worker():
@@ -490,11 +462,11 @@ def process_connections_payload(raw_conns, server):
             if key not in active_ids:
                 if info["closed_at"] is None:
                     info["closed_at"] = now
-                elif now - info["closed_at"] > 10:
+                elif now - info["closed_at"] > 5:
                     expired_ids.append(key)
 
         for key in expired_ids:
-            del CONNECTION_HISTORY[key]
+            CONNECTION_HISTORY.pop(key, None)
 
         all_tracked = []
         for key, info in CONNECTION_HISTORY.items():
@@ -562,15 +534,11 @@ def process_connections_payload(raw_conns, server):
         c["_server_name"] = server["tab_name"]
 
         meta = c.get("metadata", {})
-        sip = meta.get("sourceIP")
-        if sip:
-            trigger_async_geo_lookup(sip)
         dip = str(meta.get("destinationIP") or "-")
         host = str(meta.get("host") or "-")
         target_key = dip if dip != "-" else host
-        if target_key:
-            trigger_async_geo_lookup(target_key)
-            ip_info = GEO_CACHE.get(target_key, {})
+        if target_key and CHECK_GEO_IPS:
+            ip_info = lookup_geo(target_key)
             if isinstance(ip_info, dict) and ip_info.get("country") == GEO_COUNTRY_CODE:
                 cid = c.get("id")
                 if cid:
@@ -848,17 +816,17 @@ def draw_main_interface(stdscr):
         host = str(meta.get("host") or "-")
         target_key = dip if dip != "-" else host
 
-        s_ip_info = GEO_CACHE.get(sip, {})
-        ip_info = GEO_CACHE.get(target_key, {})
+        s_ip_info = lookup_geo(sip)
+        ip_info = lookup_geo(target_key)
 
         table_data.append({
             "num": str(i + 1),
             "type": clean_type(meta.get("type")),
             "sip": sip,
             "srv": str(c.get("_server_name") or "-"),
-            "scc": s_ip_info.get("country", "-") if isinstance(s_ip_info, dict) else "-",
+            "scc": s_ip_info.get("country", "-"),
             "count": str(c.get("count", "1")),
-            "cc": ip_info.get("country", "-") if isinstance(ip_info, dict) else "-",
+            "cc": ip_info.get("country", "-"),
             "dip": dip,
             "host": host,
             "dport": str(meta.get("destinationPort") or "-"),
@@ -866,7 +834,7 @@ def draw_main_interface(stdscr):
             "down": fmt_bytes(c.get("download", 0)),
             "time": parse_time(c.get("start")),
             "net": str(meta.get("network") or "-").upper(),
-            "asn": ip_info.get("isp", "-") if isinstance(ip_info, dict) else "-",
+            "asn": ip_info.get("isp", "-"),
             "raw_up": c.get("upload", 0),
             "raw_down": c.get("download", 0),
             "raw_dip": target_key,
@@ -892,7 +860,7 @@ def draw_main_interface(stdscr):
     for screen_y, row in enumerate(visible_rows):
         actual_idx = scroll_off + screen_y
 
-        dip_info = GEO_CACHE.get(row["raw_dip"], {})
+        dip_info = lookup_geo(row["raw_dip"])
         is_geo = isinstance(dip_info, dict) and dip_info.get("country") == GEO_COUNTRY_CODE
         is_dead = row["raw_up"] == 0 or row["raw_down"] == 0
         is_closed = row["raw_is_closed"]
@@ -1175,7 +1143,6 @@ def draw_ui(stdscr):
                 if SORT_BY != "end" and AUTO_FOLLOW_MODE == "bottom":
                     AUTO_FOLLOW_MODE = "none"
 
-                # Run merge_connections in a separate thread so key handling never blocks the UI loop
                 thread_pool.submit(merge_connections)
         elif key == curses.KEY_UP:
             if IN_GEO_VIEW:
