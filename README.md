@@ -46,5 +46,5 @@ For clients sing-box API
 - <b>S</b>  Changes sort direction and sort order by most uploaded or downloaded.
 
 #### Information
-On the first run the databases are downloaded.
+On the first run the configuration file is created and the databases are downloaded.
 Configurations are stored in ~/.config/sing-song/config.json
