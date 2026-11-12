@@ -16,7 +16,9 @@ Seperate versions for sing-box running on a server (sing) or local client machin
 
 #### Dependencies
 
+```
 pip3 install maxminddb websocket-client cachetools
+```
 
 #### Sing
 
