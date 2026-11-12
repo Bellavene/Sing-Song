@@ -14,6 +14,10 @@ A TUI panel for [Sing-Box](https://github.com/SagerNet/sing-box)’s API calls u
 
 Seperate versions for sing-box running on a server (sing) or local client machine (singlo)
 
+#### Dependencies
+
+pip3 install maxminddb websocket-client cachetools
+
 #### Sing
 
 for servers sing-box API
